@@ -14,6 +14,8 @@
 
 Dolus modules are typically authored and published via the [Dolus Playground](https://play.dolus.app). This API provides advanced users and automation tools with endpoints for module signing and validation.
 
+Dolus modules now require a unique identifier (`id`) following a package-like format and a version number adhering to semantic versioning principles. These changes enhance module management and version control within the Dolus ecosystem.
+
 <details>
 <summary><strong>Why We Sign and Verify Modules</strong></summary>
 
@@ -67,7 +69,15 @@ Signs a Dolus module after schema and AST validation.
 <details>
 <summary><strong>Request Body</strong></summary>
 
-JSON object representing the Dolus module, following the Dolus module schema.
+JSON object representing the Dolus module, following the Dolus module schema. Key requirements include:
+
+- `id`: Must follow a package-like format (e.g., `@scope/module-name` or `module-name`)
+- `version`: Must be included and follow semantic versioning (e.g., `1.0.0`)
+- `name`: The name of the module (non-empty string)
+- `description`: A description of the module's purpose (non-empty string)
+- `actions`: An array of actions to be performed by the module (at least one action required)
+
+Note: The `author` field will be automatically populated based on the authenticated user's GitHub information.
 
 </details>
 
@@ -76,9 +86,10 @@ JSON object representing the Dolus module, following the Dolus module schema.
 
 | Status | Description           | Body                                              |
 |--------|-----------------------|---------------------------------------------------|
-| 200    | Successful Signing    | `{ "error": false, "message": "Module signed successfully", "id": "<module_uuid>", "signedModule": "<signed_module_json>" }` |
+| 200    | Successful Signing    | `{ "error": false, "message": "Module signed successfully", "id": "<module_id>", "version": "<module_version>", "signedModule": "<signed_module_json>" }` |
 | 422    | Validation Error      | See [Validation Error Response](#validation-error-response) |
 | 400    | Other Errors          | `{ "error": true, "message": "Error description" }` |
+| 500    | Database Error        | `{ "error": true, "message": "An internal database error occurred. Please try again later." }` |
 
 </details>
 
@@ -90,13 +101,10 @@ curl -X POST https://api.dolus.app/v1/module/sign \
   -H "Authorization: Bearer dol.your_api_key_here" \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "example-module",
+    "id": "@example-org/demo-module",
+    "version": "1.0.0",
+    "name": "Example Module",
     "description": "This is an example module",
-    "author": {
-      "name": "John Doe",
-      "email": "john.doe@example.com",
-      "github": "https://github.com/johndoe"
-    },
     "actions": [
       {
         "name": "create-directory",
@@ -105,6 +113,17 @@ curl -X POST https://api.dolus.app/v1/module/sign \
     ]
   }'
 ```
+
+</details>
+
+<details>
+<summary><strong>Important Notes</strong></summary>
+
+1. The `id` field must be unique or owned by the authenticated user.
+2. The `version` must be greater than any previously published version for that module ID.
+3. Certain scopes (e.g., `@example`, `@official`, `@andrew`, `@example-org`) are reserved and cannot be used.
+4. The `author` field will be automatically populated based on the authenticated user's GitHub information.
+5. The maximum payload size is limited. Ensure your module doesn't exceed this limit.
 
 </details>
 
@@ -117,7 +136,14 @@ Validates a Dolus module without signing it.
 <details>
 <summary><strong>Request Body</strong></summary>
 
-JSON object representing the Dolus module, following the Dolus module schema.
+JSON object representing the Dolus module, following the Dolus module schema. Key requirements include:
+
+- `id`: Must follow a package-like format (e.g., `@scope/module-name` or `module-name`)
+- `version`: Must be included and follow semantic versioning (e.g., `1.0.0`)
+- `name`: The name of the module (non-empty string)
+- `description`: A description of the module's purpose (non-empty string)
+- `author`: Information about the module's author (will be validated but not used in the actual signing process)
+- `actions`: An array of actions to be performed by the module (at least one action required)
 
 </details>
 
@@ -140,7 +166,9 @@ curl -X POST https://api.dolus.app/v1/module/validate \
   -H "Authorization: Bearer dol.your_api_key_here" \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "example-module",
+    "id": "@example-org/demo-module",
+    "version": "1.0.0",
+    "name": "Example Module",
     "description": "This is an example module",
     "author": {
       "name": "John Doe",
@@ -169,13 +197,22 @@ curl -X POST https://api.dolus.app/v1/module/validate \
   "message": "Invalid module payload: Schema validation failed",
   "schemaErrors": [
     {
-      "instancePath": "/actions/0/value",
-      "schemaPath": "#/definitions/modifyRegistryEntry/properties/value/type",
-      "keyword": "type",
+      "instancePath": "/id",
+      "schemaPath": "#/properties/id/pattern",
+      "keyword": "pattern",
       "params": {
-        "type": "string"
+        "pattern": "^(?:@(?:[a-z0-9-*~][a-z0-9-*._~]*)?/)?[a-z0-9-~][a-z0-9-._~]*$"
       },
-      "message": "must be string"
+      "message": "must match pattern \"^(?:@(?:[a-z0-9-*~][a-z0-9-*._~]*)?/)?[a-z0-9-~][a-z0-9-._~]*$\""
+    },
+    {
+      "instancePath": "/version",
+      "schemaPath": "#/properties/version/pattern",
+      "keyword": "pattern",
+      "params": {
+        "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-((?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\\.(?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\\+([0-9a-zA-Z-]+(?:\\.[0-9a-zA-Z-]+)*))?$"
+      },
+      "message": "must match pattern \"^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-((?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\\.(?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\\+([0-9a-zA-Z-]+(?:\\.[0-9a-zA-Z-]+)*))?$\""
     }
   ]
 }
@@ -255,14 +292,12 @@ jobs:
             exit 1
           fi
           
-          MODULE_ID=$(echo "$BODY" | jq -r .id)
-          echo "$BODY" | jq -r .signedModule > "$MODULE_ID.json"
-          echo "module_id=$MODULE_ID" >> $GITHUB_ENV
+          echo "$BODY" | jq -r .signedModule > "module.json"
 
       - name: Release
         uses: ncipollo/release-action@v1
         with:
-          artifacts: "${{ env.module_id }}.json"
+          artifacts: "module.json"
           artifactContentType: application/json
           bodyFile: "CHANGELOG.md"
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -273,15 +308,9 @@ jobs:
           tag: ${{ github.ref }}
 ```
 
-This action:
-1. Triggers on pushes of tags starting with 'v'
-2. Signs the module using the Dolus API, with error checking
-3. Creates a new GitHub release using `ncipollo/release-action@v1`
-4. Uploads the signed module as a release asset
-5. Renames the artifact using the module ID
-6. Uploads the renamed artifact to the workflow artifacts
-
 **Notes:** 
+- Ensure your `module.json` file includes the correct `id` and `version` fields before signing.
+- The `version` in your module should match the Git tag (e.g., if the tag is `v1.0.0`, your module's version should be `1.0.0`).
 - Set the `DOLUS_API_KEY` secret in your GitHub repository settings.
 - Ensure you have a `CHANGELOG.md` file in your repository root for the release notes.
 - The `permissions: contents: write` is required to create releases.
@@ -293,3 +322,8 @@ This action:
 
 - Keep your API key secure and never commit it to your repository.
 - Use GitHub secrets or similar secure methods to manage sensitive information in your CI/CD pipelines.
+- Ensure your module's `id` and `version` are correctly set before signing.
+- Be aware of reserved scopes that cannot be used in your module `id`.
+- When creating or updating modules, ensure that the `id` field follows the package-like format (e.g., `@scope/module-name` or `module-name`).
+- The `version` field must be included and follow semantic versioning (e.g., `1.0.0`).
+- The `author` information will be automatically populated during the signing process based on your authenticated GitHub account.

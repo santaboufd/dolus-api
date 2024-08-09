@@ -86,7 +86,7 @@ Note: The `author` field will be automatically populated based on the authentica
 
 | Status | Description           | Body                                              |
 |--------|-----------------------|---------------------------------------------------|
-| 200    | Successful Signing    | `{ "error": false, "message": "Module signed successfully", "id": "<module_id>", "version": "<module_version>", "signedModule": "<signed_module_json>" }` |
+| 200    | Successful Signing    | `{ "error": false, "message": "Module signed successfully", "id": "<module_id>", "version": "<module_version>", "module": "<base64_encoded_module>" }` |
 | 422    | Validation Error      | See [Validation Error Response](#validation-error-response) |
 | 400    | Other Errors          | `{ "error": true, "message": "Error description" }` |
 | 500    | Database Error        | `{ "error": true, "message": "An internal database error occurred. Please try again later." }` |
@@ -124,8 +124,10 @@ curl -X POST https://api.dolus.app/v1/module/sign \
 3. Certain scopes (e.g., `@example`, `@official`, `@andrew`, `@example-org`) are reserved and cannot be used.
 4. The `author` field will be automatically populated based on the authenticated user's GitHub information.
 5. The maximum payload size is limited. Ensure your module doesn't exceed this limit.
+6. The response includes a `module` field containing the base64-encoded signed module data.
 
 </details>
+
 
 ### Module Validation
 
@@ -292,13 +294,15 @@ jobs:
             exit 1
           fi
           
-          echo "$BODY" | jq -r .signedModule > "module.json"
+          ID=$(echo "$BODY" | jq -r .id)
+          VERSION=$(echo "$BODY" | jq -r .version)
+          echo "$BODY" | jq -r .module | base64 --decode > "${ID}-${VERSION}.mod"
 
       - name: Release
         uses: ncipollo/release-action@v1
         with:
-          artifacts: "module.json"
-          artifactContentType: application/json
+          artifacts: "${{ steps.sign_module.outputs.ID }}-${{ steps.sign_module.outputs.VERSION }}.mod"
+          artifactContentType: application/octet-stream
           bodyFile: "CHANGELOG.md"
           token: ${{ secrets.GITHUB_TOKEN }}
           allowUpdates: true
@@ -314,16 +318,5 @@ jobs:
 - Set the `DOLUS_API_KEY` secret in your GitHub repository settings.
 - Ensure you have a `CHANGELOG.md` file in your repository root for the release notes.
 - The `permissions: contents: write` is required to create releases.
-- The action checks for both HTTP status codes and the `error` field in the API response.
 
 </details>
-
-## Notes
-
-- Keep your API key secure and never commit it to your repository.
-- Use GitHub secrets or similar secure methods to manage sensitive information in your CI/CD pipelines.
-- Ensure your module's `id` and `version` are correctly set before signing.
-- Be aware of reserved scopes that cannot be used in your module `id`.
-- When creating or updating modules, ensure that the `id` field follows the package-like format (e.g., `@scope/module-name` or `module-name`).
-- The `version` field must be included and follow semantic versioning (e.g., `1.0.0`).
-- The `author` information will be automatically populated during the signing process based on your authenticated GitHub account.
